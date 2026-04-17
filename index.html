@@ -1739,11 +1739,6 @@ async function analyze() {
 
 async function _analyzeCore() {
 
-  const demoMode = document.getElementById('demoToggle').checked;
-  if (demoMode) {
-    setTimeout(() => { processResults(DEMO_RESULT); }, 1200);
-    return;
-  }
 
   const key = document.getElementById('apiKey').value.trim();
 
