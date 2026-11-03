@@ -1230,6 +1230,27 @@ input:focus {
   .results-header { padding: 14px 16px; }
   .f-row, .v-row, .q-row { padding-left: 14px; padding-right: 14px; }
 }
+
+/* prázdne editovateľné polia — vždy klikateľné */
+div[contenteditable] { min-height: 1.5em; }
+span[contenteditable] { display: inline-block; min-width: 2ch; }
+.chip-e span[contenteditable]:empty, .chip-e span[contenteditable]:has(> br:only-child) { min-width: 12em; }
+[contenteditable]:empty::before { content: attr(data-ph); color: var(--slate-light); font-style: italic; }
+[contenteditable]:empty:not([data-ph]) { border-bottom: 1px dashed var(--border); }
+
+.mu-list { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.mu-card { border: 1px solid var(--K-border); border-left: 4px solid var(--K-color); border-radius: 8px; padding: 8px 12px 10px; background: #FFFCFB; }
+.mu-head { display: flex; align-items: flex-start; gap: 8px; color: var(--K-color); font-weight: 700; font-size: .84rem; margin-bottom: 4px; }
+.mu-title { flex: 1; color: var(--slate); }
+.step-num.mu-num { background: var(--K-color); }
+
+.step-tools { display: flex; gap: 2px; flex-shrink: 0; opacity: .55; transition: opacity .15s; }
+.step:hover .step-tools, .step:focus-within .step-tools { opacity: 1; }
+.st-btn { border: 1px solid transparent; background: none; color: var(--slate-light); cursor: pointer; font-size: 13px; width: 24px; height: 24px; border-radius: 5px; line-height: 1; padding: 0; }
+.st-btn:hover { background: var(--border-light); color: var(--slate); border-color: var(--border); }
+.st-btn.add { color: var(--accent); font-size: 15px; }
+@media (hover: none) { .step-tools { opacity: 1; } }
+@media (max-width: 768px) { .step { flex-wrap: wrap; } .step [contenteditable] { min-width: calc(100% - 40px); } .step-tools { margin-left: 33px; } }
 </style>
 <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 </head>
@@ -1469,6 +1490,11 @@ function ed(tag, cls, obj, key, placeholder) {
   return el;
 }
 
+
+function focusEl(el) { if (!el) return; el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
+function focusLast(sel) { setTimeout(() => { const a = document.querySelectorAll(sel); focusEl(a[a.length - 1]); }, 30); }
+function focusEmpty(sel) { setTimeout(() => { const a = Array.from(document.querySelectorAll(sel)).filter(e => !e.textContent.trim()); focusEl(a[a.length - 1]); }, 30); }
+
 /* ═══════════ PERSISTENCE (IndexedDB) ═══════════ */
 const DB_NAME = 'safety-vision', STORE = 'kv';
 function idb() {
@@ -1683,7 +1709,7 @@ function repairStoredBpp(B) {
   if (raw.porucha === '—') raw.porucha = '';
   repairInput(raw, bppTool().input_schema);
   B.specificke = raw.specificke_poziadavky || '';
-  B.mimoriadne = raw.mimoriadne_udalosti || B.mimoriadne;
+  if (raw.mimoriadne_udalosti) B.mimoriadne = raw.mimoriadne_udalosti;
   B.porucha = raw.porucha || B.porucha;
   if (!B.legislativa.length && Array.isArray(raw.legislativa)) B.legislativa = raw.legislativa.map(x => ({ id: uid(), predpis: String(x.predpis || ''), relevantnost: String(x.relevantnost || '') }));
 }
@@ -1978,7 +2004,7 @@ function renderBozp() {
     }
     vc.appendChild(row);
   });
-  vc.appendChild(h('button', { class: 'add-row', onclick: () => { S.bozp.overit.push({ id: uid(), otazka: '', stav: '', nalez: null, findingId: null }); renderBozp(); persistSoon(); } }, '+ Pridať bod na overenie'));
+  vc.appendChild(h('button', { class: 'add-row', onclick: () => { S.bozp.overit.push({ id: uid(), otazka: '', stav: '', nalez: null, findingId: null }); renderBozp(); persistSoon(); focusEmpty('#panelBOZP .v-q'); } }, '+ Pridať bod na overenie'));
   P.appendChild(vc);
 
   // Hodnotenie
@@ -2071,7 +2097,7 @@ function renderPha() {
   });
   card.appendChild(h('div', { class: 'pha-wrap' }, h('table', { class: 'pha-table' },
     h('thead', null, h('tr', null, ...['#', 'Nebezpečenstvo', 'P', 'Z', 'RPN', 'Úroveň', 'Opatrenia', ''].map(t => h('th', null, t)))), tb)));
-  card.appendChild(h('button', { class: 'add-row', onclick: () => { S.pha.hazards.push({ id: uid(), nebezpecenstvo: '', p: 3, z: 3, opatrenia: '' }); renderPha(); persistSoon(); } }, '+ Pridať nebezpečenstvo'));
+  card.appendChild(h('button', { class: 'add-row', onclick: () => { S.pha.hazards.push({ id: uid(), nebezpecenstvo: '', p: 3, z: 3, opatrenia: '' }); renderPha(); persistSoon(); focusEmpty('#panelPHA td [contenteditable]'); } }, '+ Pridať nebezpečenstvo'));
   P.appendChild(card);
   const ac = h('div', { class: 'assessment-box' }, h('div', { class: 'assessment-label' }, 'Celkové hodnotenie rizík'), ed('div', 'assessment-text', S.pha, 'hodnotenie'));
   P.appendChild(ac);
@@ -2118,6 +2144,10 @@ function systemBpp() {
     'Hodnotenie rizík: pravdepodobnosť Nízka/Stredná/Vysoká, závažnosť Malá/Stredná/Vážna/Kritická, miera rizika NÍZKA/STREDNÁ/VYSOKÁ, ku každému konkrétne opatrenie.',
     'Prevádzkové parametre (tlak, teplota, médium) uveď len ak sa činnosť týka technologického zariadenia; inak uveď „—".',
     'Kontaktné osoby, mená a interné telefónne čísla nevymýšľaj — tie doplní používateľ.',
+    'POSTUP PRI MIMORIADNYCH UDALOSTIACH je povinná časť každého BPP — vypracuj ho vždy, aj keď sa naň bezpečnostný technik nepýtal a aj keď v odpovediach uviedol, že plán neexistuje.',
+    'Uveď 3 až 6 scenárov, ktoré reálne hrozia pri tejto konkrétnej práci (napr. úraz pracovníka, pád z výšky, zavesenie v postroji, zasypanie vo výkope, nevoľnosť alebo bezvedomie v uzavretom priestore, poleptanie, únik nebezpečnej látky, požiar, zásah elektrickým prúdom, zlyhanie zdvíhacieho zariadenia, náhla zmena počasia).',
+    'Ak ide o prácu vo výške, vo výkope, v uzavretom priestore alebo inú prácu, z ktorej sa postihnutý nedostane sám, prvým scenárom musí byť ZÁCHRANA POSTIHNUTÉHO (záchranný plán): kto velí, kto a akým vybavením postihnutého zachraňuje, v akom čase (pri zavesení v postroji do 15 minút) a ako sa chráni záchranca.',
+    'Každý scenár má 3 až 7 krátkych krokov v poradí, ako ich treba vykonať: zastavenie práce a ohlásenie, privolanie pomoci (112/155/150 a interná pohotovosť), záchrana a prvá pomoc, zabezpečenie miesta, nahlásenie.',
     'Legislatívu vyber iba zo zoznamu povolených predpisov a ku každému uveď, prečo je pre tento BPP relevantný.'
   ].join('\n');
 }
@@ -2137,7 +2167,9 @@ function bppTool() {
       miera: { type: 'string', enum: ['NÍZKA', 'STREDNÁ', 'VYSOKÁ'] },
       opatrenie: STR }, required: ['nebezpecenstvo', 'pravdepodobnost', 'zavaznost', 'miera', 'opatrenie'] }),
     oopp: arr(STR),
-    specificke_poziadavky: STR, mimoriadne_udalosti: STR, porucha: STR,
+    specificke_poziadavky: STR,
+    mimoriadne_udalosti: arr({ type: 'object', properties: { udalost: { type: 'string', description: 'Názov scenára, napr. Záchrana zaveseného pracovníka' }, kroky: arr(STR) }, required: ['udalost', 'kroky'] }),
+    porucha: STR,
     legislativa: arr({ type: 'object', properties: { predpis: STR, relevantnost: STR }, required: ['predpis', 'relevantnost'] })
   }, required: ['nazov', 'identifikacia', 'upozornenie', 'kroky', 'prostriedky', 'sposobilost', 'rizika', 'oopp', 'specificke_poziadavky', 'mimoriadne_udalosti', 'porucha', 'legislativa'] } };
 }
@@ -2172,9 +2204,44 @@ function normalizeBpp(b) {
     sposobilost: (b.sposobilost || []).map(x => ({ id: uid(), poziadavka: s(x.poziadavka), ano: !!x.ano, uved: s(x.uved) })),
     rizika: (b.rizika || []).map(x => ({ id: uid(), nebezpecenstvo: s(x.nebezpecenstvo), pravdepodobnost: s(x.pravdepodobnost), zavaznost: s(x.zavaznost), miera: s(x.miera), opatrenie: s(x.opatrenie) })),
     oopp: (b.oopp || []).map(x => ({ id: uid(), t: s(x) })),
-    specificke: s(b.specificke_poziadavky), mimoriadne: s(b.mimoriadne_udalosti), porucha: s(b.porucha),
+    specificke: s(b.specificke_poziadavky), mu: normMu(b.mimoriadne_udalosti), porucha: s(b.porucha),
     legislativa: (b.legislativa || []).map(x => ({ id: uid(), predpis: s(x.predpis), relevantnost: s(x.relevantnost) }))
   };
+}
+
+
+function normMu(v) {
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = v.trim() ? [{ udalost: 'Postup pri mimoriadnej udalosti', kroky: [v] }] : []; } }
+  if (!Array.isArray(v)) return [];
+  return v.map(sc => ({ id: uid(), udalost: String(sc.udalost || ''), kroky: (Array.isArray(sc.kroky) ? sc.kroky : [sc.kroky]).filter(Boolean).map(t => ({ id: uid(), t: String(t) })) }));
+}
+// staršie BPP: text mimoriadnych udalostí -> jeden scenár
+function migrateBpp(B) {
+  if (!B || Array.isArray(B.mu)) return;
+  B.mu = Array.isArray(B.mimoriadne) ? normMu(B.mimoriadne) : normMu(B.mimoriadne && B.mimoriadne !== '—' ? String(B.mimoriadne) : '');
+  delete B.mimoriadne;
+}
+
+
+function withSid(el, id) { el.setAttribute('data-sid', id); return el; }
+// Ovládanie kroku: presun hore/dole v rámci skupiny, vloženie pod, odstránenie
+function stepTools(arr, item, cb, make, same) {
+  const move = dir => {
+    const i = arr.indexOf(item);
+    let j = i + dir;
+    while (j >= 0 && j < arr.length && !same(arr[j])) j += dir;
+    if (j < 0 || j >= arr.length) return;
+    arr.splice(i, 1); arr.splice(j, 0, item); cb(); persistSoon();
+  };
+  const ins = () => {
+    const nw = make(); arr.splice(arr.indexOf(item) + 1, 0, nw); cb(); persistSoon();
+    setTimeout(() => { const el = document.querySelector(`[data-sid="${nw.id}"]`); if (el) focusEl(el); }, 30);
+  };
+  return h('div', { class: 'step-tools' },
+    h('button', { class: 'st-btn', title: 'Posunúť vyššie', onclick: () => move(-1) }, '↑'),
+    h('button', { class: 'st-btn', title: 'Posunúť nižšie', onclick: () => move(1) }, '↓'),
+    h('button', { class: 'st-btn add', title: 'Vložiť krok pod tento', onclick: ins }, '⊕'),
+    delBtn(arr, item, cb));
 }
 
 function bppSection(num, title, ...content) {
@@ -2206,8 +2273,8 @@ function renderBppDoc(P) {
   let n = 0;
   ['PRED', 'POCAS', 'PO'].forEach(fz => {
     steps.appendChild(h('div', { class: `phase-lbl ${fz}` }, FAZY[fz]));
-    B.kroky.filter(k => k.faza === fz).forEach(k => { n++; steps.appendChild(h('div', { class: 'step' }, h('div', { class: 'step-num' }, String(n)), ed('div', '', k, 'popis'), delBtn(B.kroky, k, re))); });
-    steps.appendChild(h('button', { class: 'small-add', onclick: () => { const last = B.kroky.map(k => k.faza).lastIndexOf(fz); const item = { id: uid(), faza: fz, popis: '' }; if (last > -1) B.kroky.splice(last + 1, 0, item); else B.kroky.push(item); re(); persistSoon(); } }, '+ krok'));
+    B.kroky.filter(k => k.faza === fz).forEach(k => { n++; steps.appendChild(h('div', { class: 'step' }, h('div', { class: 'step-num' }, String(n)), withSid(ed('div', '', k, 'popis', 'Popis kroku…'), k.id), stepTools(B.kroky, k, re, () => ({ id: uid(), faza: k.faza, popis: '' }), x => x.faza === k.faza))); });
+    steps.appendChild(h('button', { class: 'small-add', onclick: () => { const last = B.kroky.map(k => k.faza).lastIndexOf(fz); const item = { id: uid(), faza: fz, popis: '' }; if (last > -1) B.kroky.splice(last + 1, 0, item); else B.kroky.push(item); re(); persistSoon(); focusEmpty('#panelBPP .step [contenteditable]'); } }, '+ krok'));
   });
   card.appendChild(bppSection('3', 'Popis pracovnej činnosti — pracovné kroky', steps));
 
@@ -2221,7 +2288,7 @@ function renderBppDoc(P) {
     h('td', null, ed('div', '', x, 'uved')), h('td', null, delBtn(B.sposobilost, x, re)))));
   spT.appendChild(spB);
   card.appendChild(bppSection('5', 'Požiadavky na spôsobilosť', spT,
-    h('button', { class: 'small-add', onclick: () => { B.sposobilost.push({ id: uid(), poziadavka: '', ano: true, uved: '' }); re(); persistSoon(); } }, '+ požiadavka')));
+    h('button', { class: 'small-add', onclick: () => { B.sposobilost.push({ id: uid(), poziadavka: '', ano: true, uved: '' }); re(); persistSoon(); focusEmpty('#panelBPP .simple-table td:first-child [contenteditable]'); } }, '+ požiadavka')));
 
   const rkT = h('table', { class: 'simple-table' }, h('thead', null, h('tr', null, ...['Nebezpečenstvo', 'Pravdep.', 'Závažnosť', 'Miera', 'Opatrenie', ''].map(t => h('th', null, t)))));
   const rkB = h('tbody');
@@ -2235,15 +2302,28 @@ function renderBppDoc(P) {
     h('td', null, ed('div', '', x, 'opatrenie')), h('td', null, delBtn(B.rizika, x, re)))));
   rkT.appendChild(rkB);
   card.appendChild(bppSection('6', 'Bezpečnostné opatrenia — hodnotenie rizík', h('div', { class: 'pha-wrap' }, rkT),
-    h('button', { class: 'small-add', onclick: () => { B.rizika.push({ id: uid(), nebezpecenstvo: '', pravdepodobnost: 'Stredná', zavaznost: 'Stredná', miera: 'STREDNÁ', opatrenie: '' }); re(); persistSoon(); } }, '+ riziko')));
+    h('button', { class: 'small-add', onclick: () => { B.rizika.push({ id: uid(), nebezpecenstvo: '', pravdepodobnost: 'Stredná', zavaznost: 'Stredná', miera: 'STREDNÁ', opatrenie: '' }); re(); persistSoon(); focusEmpty('#panelBPP .simple-table td:first-child [contenteditable]'); } }, '+ riziko')));
 
   const chips = h('div', { class: 'chips' });
-  B.oopp.forEach(o => chips.appendChild(h('span', { class: 'chip-e' }, '☑ ', ed('span', '', o, 't'), delBtn(B.oopp, o, re))));
+  B.oopp.forEach(o => chips.appendChild(h('span', { class: 'chip-e' }, '☑ ', ed('span', '', o, 't', 'Doplňte OOPP…'), delBtn(B.oopp, o, re))));
   card.appendChild(bppSection('7', 'OOPP — osobné ochranné pracovné prostriedky', chips,
-    h('button', { class: 'small-add', onclick: () => { B.oopp.push({ id: uid(), t: '' }); re(); persistSoon(); } }, '+ OOPP')));
+    h('button', { class: 'small-add', onclick: () => { B.oopp.push({ id: uid(), t: '' }); re(); persistSoon(); focusLast('#panelBPP .chip-e [contenteditable]'); } }, '+ OOPP')));
 
-  card.appendChild(bppSection('8', 'Špecifické požiadavky, mimoriadne udalosti a poruchy', kv([
-    ['Špecifické požiadavky', B, 'specificke'], ['Mimoriadne udalosti', B, 'mimoriadne'], ['Porucha', B, 'porucha'], ['Interná pohotovosť', B.hlavicka, 'interna']]),
+  const muBox = h('div', { class: 'mu-list' });
+  B.mu.forEach(sc => {
+    const box = h('div', { class: 'mu-card' });
+    box.appendChild(h('div', { class: 'mu-head' }, h('span', null, '⚠'), ed('div', 'mu-title', sc, 'udalost', 'Názov mimoriadnej udalosti…'), delBtn(B.mu, sc, re)));
+    sc.kroky.forEach((k, i) => box.appendChild(h('div', { class: 'step' }, h('div', { class: 'step-num mu-num' }, String(i + 1)), withSid(ed('div', '', k, 't', 'Krok postupu…'), k.id), stepTools(sc.kroky, k, re, () => ({ id: uid(), t: '' }), () => true))));
+    box.appendChild(h('button', { class: 'small-add', onclick: () => { sc.kroky.push({ id: uid(), t: '' }); re(); persistSoon(); focusEmpty('#panelBPP .mu-card .step [contenteditable]'); } }, '+ krok'));
+    muBox.appendChild(box);
+  });
+  if (!B.mu.length) muBox.appendChild(h('div', { class: 'empty-note', style: 'padding:6px 0' }, 'Zatiaľ bez scenárov.'));
+  card.appendChild(bppSection('8', 'Špecifické požiadavky, mimoriadne udalosti a poruchy',
+    kv([['Špecifické požiadavky', B, 'specificke']]),
+    h('div', { class: 'phase-lbl', style: 'color:var(--K-color);margin-top:14px' }, 'Postup pri mimoriadnych udalostiach'),
+    muBox,
+    h('button', { class: 'small-add', onclick: () => { B.mu.push({ id: uid(), udalost: '', kroky: [{ id: uid(), t: '' }] }); re(); persistSoon(); focusEmpty('#panelBPP .mu-title'); } }, '+ mimoriadna udalosť'),
+    h('div', { style: 'margin-top:14px' }, kv([['Porucha', B, 'porucha'], ['Interná pohotovosť', B.hlavicka, 'interna']])),
     h('div', { style: 'font-size:.78rem;color:var(--slate-mid);margin-top:8px' }, 'Záchranné čísla: 112 · Záchranná služba 155 · Hasiči 150 · Polícia 158')));
 
   const lg = h('table', { class: 'simple-table' }, h('thead', null, h('tr', null, h('th', null, 'Predpis'), h('th', null, 'Relevantnosť pre tento BPP'), h('th'))));
@@ -2251,7 +2331,7 @@ function renderBppDoc(P) {
   B.legislativa.forEach(x => lgB.appendChild(h('tr', null, h('td', { style: 'font-weight:600' }, ed('div', '', x, 'predpis')), h('td', null, ed('div', '', x, 'relevantnost')), h('td', null, delBtn(B.legislativa, x, re)))));
   lg.appendChild(lgB);
   card.appendChild(bppSection('9', 'Legislatíva a normy', lg,
-    h('button', { class: 'small-add', onclick: () => { B.legislativa.push({ id: uid(), predpis: '', relevantnost: '' }); re(); persistSoon(); } }, '+ predpis')));
+    h('button', { class: 'small-add', onclick: () => { B.legislativa.push({ id: uid(), predpis: '', relevantnost: '' }); re(); persistSoon(); focusEmpty('#panelBPP .simple-table td:first-child [contenteditable]'); } }, '+ predpis')));
 
   P.appendChild(card);
 }
@@ -2305,10 +2385,10 @@ function D() {
     shading: o.fill ? { fill: o.fill, type: d.ShadingType.CLEAR, color: 'auto' } : undefined,
     borders: o.noBorder ? noBorders : undefined,
     margins: { top: 60, bottom: 60, left: 100, right: 100 },
-    children: (Array.isArray(content) ? content : [content]).map(c => typeof c === 'string' ? para(run(c, o), { after: 0, align: o.align }) : c)
+    children: (Array.isArray(content) ? content : [content]).map(c => typeof c === 'string' ? para(run(c, o), { after: 0, align: o.align, keepNext: o.keepNext }) : c)
   });
   const table = (rows, widths) => new d.Table({ width: { size: widths.reduce((a, b) => a + b, 0), type: d.WidthType.DXA }, columnWidths: widths, borders, rows });
-  const bar = (text, fill = '1A6B5A') => table([new d.TableRow({ children: [cell(text, { fill, bold: true, color: 'FFFFFF', size: 19, w: 9638 })] })], [9638]);
+  const bar = (text, fill = '1A6B5A', keepNext) => table([new d.TableRow({ cantSplit: true, children: [cell(text, { fill, bold: true, color: 'FFFFFF', size: 19, w: 9638, keepNext })] })], [9638]);
   const doc = children => new d.Document({
     styles: { default: { document: { run: { font: 'Arial', size: 19 } } } },
     sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1000, right: 1134, bottom: 1000, left: 1134 } } },
@@ -2480,7 +2560,15 @@ async function exportBppDocx() {
   ch.push(gap(140));
 
   ch.push(bar('8. ŠPECIFICKÉ POŽIADAVKY, POSTUPY PRI MIMORIADNYCH UDALOSTIACH A PORUCHÁCH'));
-  ch.push(table([['Špecifické požiadavky:', B.specificke], ['Mimoriadne udalosti:', B.mimoriadne], ['Porucha:', B.porucha],
+  ch.push(table([new d.TableRow({ cantSplit: true, children: [lab('Špecifické požiadavky:', 2400), val(B.specificke, 7238)] })], [2400, 7238]));
+  const muRows = [new d.TableRow({ tableHeader: true, children: [cell('POSTUP PRI MIMORIADNYCH UDALOSTIACH', { w: 9638, span: 2, fill: 'FDF2F1', color: 'C0392B', bold: true, size: 17 })] })];
+  B.mu.filter(sc => sc.udalost || sc.kroky.some(k => k.t)).forEach(sc => {
+    muRows.push(new d.TableRow({ cantSplit: true, children: [cell('⚠  ' + sc.udalost, { w: 9638, span: 2, fill: 'FEF8F0', bold: true, size: 17 })] }));
+    sc.kroky.filter(k => k.t).forEach((k, i) => muRows.push(new d.TableRow({ cantSplit: true, children: [
+      cell(String(i + 1), { w: 700, bold: true, align: d.AlignmentType.CENTER, size: 17 }), cell(k.t, { w: 8938, size: 17 })] })));
+  });
+  if (muRows.length > 1) ch.push(table(muRows, [700, 8938]));
+  ch.push(table([['Porucha:', B.porucha],
     ['Záchranné telefónne čísla:', `Tiesňová linka: 112  │  Záchranná služba: 155  │  Hasiči: 150  │  Interná pohotovosť: ${Hd.interna}`]]
     .map(([a, b]) => new d.TableRow({ cantSplit: true, children: [lab(a, 2400), val(b, 7238)] })), [2400, 7238]));
   ch.push(gap(140));
@@ -2490,8 +2578,19 @@ async function exportBppDocx() {
     ...B.legislativa.map(x => new d.TableRow({ cantSplit: true, children: [val(x.predpis, 3600, { bold: true }), val(x.relevantnost, 6038)] }))], [3600, 6038]));
   ch.push(gap(240));
 
-  const sig = t => cell([para(run(t, { bold: true, size: 17 }), { after: 0 }), para(run('Meno, dátum, podpis', { size: 14, color: '718096' }), { after: 500 })], { w: 3212 });
-  ch.push(table([new d.TableRow({ cantSplit: true, children: [sig('Vypracoval'), sig('Schválil'), sig('Oboznámený pracovník')] })], [3212, 3213, 3213]));
+  const sig = t => cell([para(run(t, { bold: true, size: 17 }), { after: 0 }), para(run('Meno, dátum, podpis', { size: 14, color: '718096' }), { after: 500 })], { w: 4819 });
+  ch.push(table([new d.TableRow({ cantSplit: true, children: [sig('Vypracoval'), sig('Schválil')] })], [4819, 4819]));
+  ch.push(gap(200));
+
+  const OW = [900, 4338, 1900, 2500];
+  const obRows = [
+    new d.TableRow({ cantSplit: true, children: [cell('10. PODPISY – OBOZNÁMENIE S BPP', { w: 9638, span: 4, fill: '1A6B5A', color: 'FFFFFF', bold: true, size: 19, keepNext: true })] }),
+    new d.TableRow({ cantSplit: true, children: [cell('Podpisom potvrdzujem, že som bol oboznámený s týmto bezpečným pracovným postupom, porozumel som mu a budem ho dodržiavať.', { w: 9638, span: 4, italics: true, size: 16, color: '4A5568', keepNext: true })] }),
+    new d.TableRow({ cantSplit: true, children: ['Por. č.', 'Meno a priezvisko', 'Dátum', 'Podpis'].map((t, i) => cell(t, { w: OW[i], fill: 'E8F4F1', bold: true, size: 17, keepNext: true })) })
+  ];
+  for (let i = 1; i <= 10; i++) { const kn = i < 10; obRows.push(new d.TableRow({ cantSplit: true, height: { value: 480, rule: d.HeightRule.ATLEAST },
+    children: [cell(i + '.', { w: OW[0], align: d.AlignmentType.CENTER, size: 17, valign: d.VerticalAlign.CENTER, keepNext: kn }), cell(' ', { w: OW[1], keepNext: kn }), cell(' ', { w: OW[2], keepNext: kn }), cell(' ', { w: OW[3], keepNext: kn })] })); }
+  ch.push(table(obRows, OW));
 
   downloadBlob(await d.Packer.toBlob(doc(ch)), `BPP-${dateSlug()}.docx`);
 }
@@ -2531,7 +2630,9 @@ function exportTxt() {
     ['PRED', 'POCAS', 'PO'].forEach(fz => { o.push(FAZY[fz] + ':'); B.kroky.filter(k => k.faza === fz).forEach(k => o.push(`  ${++n}. ${k.popis}`)); o.push(''); });
     o.push('Riziká:'); B.rizika.forEach(r => o.push(`  - ${r.nebezpecenstvo} [${r.miera}] → ${r.opatrenie}`));
     o.push('', 'OOPP: ' + B.oopp.map(x => x.t).filter(Boolean).join(', '), '');
-    o.push('Mimoriadne udalosti: ' + B.mimoriadne, '');
+    o.push('Postup pri mimoriadnych udalostiach:');
+    B.mu.forEach(sc => { o.push(`  ⚠ ${sc.udalost}`); sc.kroky.filter(k => k.t).forEach((k, i) => o.push(`     ${i + 1}. ${k.t}`)); });
+    o.push('', 'Porucha: ' + B.porucha, '');
     o.push('Legislatíva:'); B.legislativa.forEach(x => o.push(`  - ${x.predpis} — ${x.relevantnost}`));
   }
   downloadBlob(new Blob([o.join('\n')], { type: 'text/plain;charset=utf-8' }), `safety-vision-${dateSlug()}.txt`);
@@ -2546,6 +2647,7 @@ function exportTxt() {
     S = Object.assign(emptyState(), saved);
     S.bppBusy = false;
     repairStoredBpp(S.bpp);
+    migrateBpp(S.bpp);
     $('contextField').value = S.context || '';
     $('bppContext').value = S.bppContext || '';
     $('modBOZP').checked = !!S.mods.bozp; $('modPHA').checked = !!S.mods.pha; $('modBPP').checked = !!S.mods.bpp;
