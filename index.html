@@ -1627,11 +1627,11 @@ async function callClaude({ system, userText, tool, maxTokens }) {
     const data = await res.json();
     if (data.stop_reason === 'max_tokens') throw new Error('Odpoveď bola príliš dlhá a odrezala sa. Skúste menej fotiek alebo menej modulov naraz.');
     const block = (data.content || []).find(b => b.type === 'tool_use' && b.name === tool.name);
-    if (block) return block.input;
+    if (block) return repairInput(block.input, tool.input_schema);
     // Záloha: model odpovedal textom — skúsime z neho vytiahnuť JSON
     const txt = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
     const a = txt.indexOf('{'), z = txt.lastIndexOf('}');
-    if (a > -1 && z > a) { try { return JSON.parse(txt.slice(a, z + 1)); } catch (e) {} }
+    if (a > -1 && z > a) { try { return repairInput(JSON.parse(txt.slice(a, z + 1)), tool.input_schema); } catch (e) {} }
     throw new Error('AI nevrátila výsledok v očakávanom tvare. Skúste to znova.');
   } catch (e) {
     if (e.name === 'AbortError' || ctrl.signal.aborted) {
@@ -1640,6 +1640,52 @@ async function callClaude({ system, userText, tool, maxTokens }) {
     if (e instanceof TypeError) throw new Error('Nepodarilo sa spojiť so serverom Anthropic. Skontrolujte internetové pripojenie.');
     throw e;
   } finally { clearTimeout(timer); currentAbort = null; }
+}
+
+
+/* ── Oprava výstupu AI: obsah ďalších polí „vytečený" do jedného reťazca ── */
+function repairInput(obj, schema) {
+  if (!obj || typeof obj !== 'object' || !schema || schema.type !== 'object') return obj;
+  const props = schema.properties || {}, keys = Object.keys(props);
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v !== 'string') continue;
+    const leakAt = keys.filter(o => o !== k).map(o => v.indexOf(`","${o}":`)).filter(i => i > -1);
+    if (!leakAt.length) continue;
+    for (const end of ['}', '"}', '"]}', ']}', '}]}', '"}]}']) {
+      try {
+        const rec = JSON.parse(`{"${k}":"` + v + end);
+        for (const [rk, rv] of Object.entries(rec)) {
+          if (rk === k || !props[rk]) { if (rk === k) obj[k] = rv; continue; }
+          const cur = obj[rk];
+          const empty = cur == null || cur === '' || (Array.isArray(cur) && !cur.length) || (typeof cur === 'string' && cur.trim() === '—');
+          if (empty) obj[rk] = rv;
+        }
+        break;
+      } catch (e) {}
+    }
+    if (typeof obj[k] === 'string' && obj[k].indexOf('","') > -1) obj[k] = obj[k].slice(0, Math.min(...leakAt));
+  }
+  for (const k of keys) {
+    const p = props[k], v = obj[k];
+    if (p.type === 'array' && typeof v === 'string') { try { const a = JSON.parse(v); if (Array.isArray(a)) obj[k] = a; } catch (e) { obj[k] = []; } }
+    if (p.type === 'object' && typeof v === 'string') { try { obj[k] = JSON.parse(v); } catch (e) {} }
+    if (p.type === 'object') repairInput(obj[k], p);
+    if (p.type === 'array' && Array.isArray(obj[k]) && p.items && p.items.type === 'object') obj[k].forEach(it => repairInput(it, p.items));
+  }
+  return obj;
+}
+// Oprava už uloženého BPP (vytvoreného pred touto opravou)
+function repairStoredBpp(B) {
+  if (!B || typeof B.specificke !== 'string' || B.specificke.indexOf('","') < 0) return;
+  const raw = { specificke_poziadavky: B.specificke, mimoriadne_udalosti: B.mimoriadne, porucha: B.porucha, legislativa: B.legislativa.length ? B.legislativa : [] };
+  if (raw.mimoriadne_udalosti === '—') raw.mimoriadne_udalosti = '';
+  if (raw.porucha === '—') raw.porucha = '';
+  repairInput(raw, bppTool().input_schema);
+  B.specificke = raw.specificke_poziadavky || '';
+  B.mimoriadne = raw.mimoriadne_udalosti || B.mimoriadne;
+  B.porucha = raw.porucha || B.porucha;
+  if (!B.legislativa.length && Array.isArray(raw.legislativa)) B.legislativa = raw.legislativa.map(x => ({ id: uid(), predpis: String(x.predpis || ''), relevantnost: String(x.relevantnost || '') }));
 }
 
 /* ═══════════ PROMPTS & SCHEMAS ═══════════ */
@@ -2499,6 +2545,7 @@ function exportTxt() {
   if (saved && saved.images) {
     S = Object.assign(emptyState(), saved);
     S.bppBusy = false;
+    repairStoredBpp(S.bpp);
     $('contextField').value = S.context || '';
     $('bppContext').value = S.bppContext || '';
     $('modBOZP').checked = !!S.mods.bozp; $('modPHA').checked = !!S.mods.pha; $('modBPP').checked = !!S.mods.bpp;
