@@ -1605,13 +1605,13 @@ async function callClaude({ system, userText, tool, maxTokens }) {
       },
       body: JSON.stringify({
         model: MODEL, max_tokens: maxTokens, system,
-        tools: [tool], tool_choice: { type: 'tool', name: tool.name },
+        tools: [tool], tool_choice: { type: 'auto' },
         messages: [{ role: 'user', content: [
           ...S.images.map((im, i) => [
             { type: 'text', text: `Fotografia ${i + 1}:` },
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: im.base64 } }
           ]).flat(),
-          { type: 'text', text: userText }
+          { type: 'text', text: userText + `\n\nVýsledok odovzdaj výhradne volaním nástroja ${tool.name}.` }
         ] }]
       })
     });
@@ -1626,9 +1626,13 @@ async function callClaude({ system, userText, tool, maxTokens }) {
     }
     const data = await res.json();
     if (data.stop_reason === 'max_tokens') throw new Error('Odpoveď bola príliš dlhá a odrezala sa. Skúste menej fotiek alebo menej modulov naraz.');
-    const block = (data.content || []).find(b => b.type === 'tool_use');
-    if (!block) throw new Error('AI nevrátila výsledok v očakávanom tvare. Skúste to znova.');
-    return block.input;
+    const block = (data.content || []).find(b => b.type === 'tool_use' && b.name === tool.name);
+    if (block) return block.input;
+    // Záloha: model odpovedal textom — skúsime z neho vytiahnuť JSON
+    const txt = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const a = txt.indexOf('{'), z = txt.lastIndexOf('}');
+    if (a > -1 && z > a) { try { return JSON.parse(txt.slice(a, z + 1)); } catch (e) {} }
+    throw new Error('AI nevrátila výsledok v očakávanom tvare. Skúste to znova.');
   } catch (e) {
     if (e.name === 'AbortError' || ctrl.signal.aborted) {
       throw new Error(ctrl.signal.reason === 'user' ? 'Analýza bola zrušená.' : 'Analýza trvala príliš dlho. Skontrolujte pripojenie a skúste znova.');
